@@ -15,3 +15,5 @@ docker build -t envoy:v2 .
 docker run -d --name envoy -p 9901:9901 -p 10000:10000 envoy:v2
 curl http://localhost:10000 -d hii
 ```
+
+Above processes can be simply run without docker also as mentioned in the readme in folder xds/
