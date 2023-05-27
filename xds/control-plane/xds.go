@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	any2 "github.com/golang/protobuf/ptypes/any"
+	"gopkg.in/yaml.v2"
 
 	"github.com/golang/protobuf/ptypes"
 	"go.uber.org/zap"
@@ -48,6 +50,7 @@ const (
 	// don't use dots in resource name
 	ClusterName1  = "cluster_a"
 	ClusterName2  = "cluster_b"
+	ClusterName3  = "cluster_c"
 	RouteName     = "local_route"
 	ListenerName  = "listener_0"
 	ListenerPort  = 10000
@@ -58,6 +61,33 @@ const (
 	xdsPort                  = 9977
 	grpcMaxConcurrentStreams = 1000000
 )
+
+var (
+	UpstreamPort3 = 0
+)
+
+type DigiDoc struct {
+	Conf struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		BasePath string `yaml:"basePath"`
+		Scheme   string `yaml:"scheme"`
+	} `yaml:"conf"`
+}
+
+func readDocs(fileName string) {
+	buf, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var config DigiDoc
+	err = yaml.Unmarshal(buf, &config)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	UpstreamPort3 = config.Conf.Port
+	fmt.Println(config.Conf.Host)
+}
 
 func makeCluster(clusterName string) *cluster.Cluster {
 	return &cluster.Cluster{
@@ -75,6 +105,10 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 	if clusterName == ClusterName2 {
 		port = UpstreamPort2
 	}
+	if clusterName == ClusterName3 {
+		port = uint32(UpstreamPort3)
+	}
+
 	return &endpoint.ClusterLoadAssignment{
 		ClusterName: clusterName,
 		Endpoints: []*endpoint.LocalityLbEndpoints{{
@@ -99,7 +133,7 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 	}
 }
 
-func makeRoute(routeName string, weight uint32, clusterName1, clusterName2 string) *route.RouteConfiguration {
+func makeRoute(routeName string, weight uint32, clusterName1, clusterName2, clusterName3 string) *route.RouteConfiguration {
 	routeConfiguration := &route.RouteConfiguration{
 		Name: routeName,
 		VirtualHosts: []*route.VirtualHost{{
@@ -164,13 +198,19 @@ func makeRoute(routeName string, weight uint32, clusterName1, clusterName2 strin
 								{
 									Name: clusterName1,
 									Weight: &wrapperspb.UInt32Value{
-										Value: 100 - weight,
+										Value: 70 - weight,
 									},
 								},
 								{
 									Name: clusterName2,
 									Weight: &wrapperspb.UInt32Value{
 										Value: weight,
+									},
+								},
+								{
+									Name: clusterName3,
+									Weight: &wrapperspb.UInt32Value{
+										Value: 30,
 									},
 								},
 							},
@@ -269,9 +309,10 @@ func GenerateSnapshot(weight uint32) (*cachev3.Snapshot, error) {
 			resource.ClusterType: {
 				makeCluster(ClusterName1),
 				makeCluster(ClusterName2),
+				//makeCluster(ClusterName3),
 			},
 			resource.RouteType: {
-				makeRoute(RouteName, weight, ClusterName1, ClusterName2),
+				makeRoute(RouteName, weight, ClusterName1, ClusterName2, ClusterName3),
 			},
 			resource.ListenerType: {
 				makeHTTPListener(ListenerName, RouteName),
@@ -328,6 +369,8 @@ func (ClusterNodeHasher) ID(node *core.Node) string {
 
 func main() {
 	ctx := context.Background()
+	fmt.Println("Calling Readdocs")
+	readDocs("digidocs.yaml")
 
 	logger, _ := zap.NewProduction()
 	defer logger.Sync() // flushes buffer, if any
