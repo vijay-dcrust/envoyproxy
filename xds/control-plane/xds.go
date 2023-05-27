@@ -309,6 +309,7 @@ func GenerateSnapshot(weight uint32) (*cachev3.Snapshot, error) {
 			resource.ClusterType: {
 				makeCluster(ClusterName1),
 				makeCluster(ClusterName2),
+				//makeCluster(ClusterName3),
 			},
 			resource.RouteType: {
 				makeRoute(RouteName, weight, ClusterName1, ClusterName2, ClusterName3),
