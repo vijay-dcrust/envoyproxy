@@ -37,7 +37,6 @@ static_resources:
         name: envoy.transport_sockets.tls
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
-          require_client_certificate: true
           common_tls_context:
             tls_certificates:
             - certificate_chain:
@@ -45,10 +44,6 @@ static_resources:
               private_key:
                 filename: /etc/server-key.pem
             validation_context:
-              match_typed_subject_alt_names:
-              - san_type: DNS
-                matcher:
-                  exact: host.docker.internal
               trusted_ca:
                 filename: /etc/myca.crt
 
@@ -65,3 +60,4 @@ static_resources:
               socket_address:
                 address: host.docker.internal
                 port_value: 8080
+
