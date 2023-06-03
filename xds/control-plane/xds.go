@@ -11,11 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/any"
 	any2 "github.com/golang/protobuf/ptypes/any"
 
 	"github.com/golang/protobuf/ptypes"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -38,6 +40,7 @@ import (
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
 	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
+	sds "github.com/vijay-dcrust/envoyproxy/xds/control-plane/sds"
 )
 
 // This is mostly copied from
@@ -211,6 +214,10 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 	if err != nil {
 		panic(err)
 	}
+	downstreamTlsContextBytes, err := proto.Marshal(sds.CreateDownStreamContext())
+	if err != nil {
+		panic(err)
+	}
 
 	return &listener.Listener{
 		Name: listenerName,
@@ -232,6 +239,15 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 					TypedConfig: pbst,
 				},
 			}},
+			TransportSocket: &core.TransportSocket{
+				Name: "tls",
+				ConfigType: &core.TransportSocket_TypedConfig{
+					TypedConfig: &any.Any{
+						TypeUrl: "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext",
+						Value:   downstreamTlsContextBytes,
+					},
+				},
+			},
 		}},
 	}
 }
@@ -260,6 +276,11 @@ var (
 
 func GenerateSnapshot(weight uint32) (*cachev3.Snapshot, error) {
 	version++
+	var secrets []types.Resource
+	for _, s := range sds.CreateSecret() {
+		secrets = append(secrets, s)
+	}
+
 	nextversion := fmt.Sprintf("snapshot-%d", version)
 	fmt.Println("publishing version: ", nextversion)
 	return cachev3.NewSnapshot(
@@ -277,7 +298,7 @@ func GenerateSnapshot(weight uint32) (*cachev3.Snapshot, error) {
 				makeHTTPListener(ListenerName, RouteName),
 			},
 			resource.RuntimeType: {},
-			resource.SecretType:  {},
+			resource.SecretType:  secrets,
 		},
 	)
 }
@@ -384,7 +405,6 @@ func main() {
 			os.Exit(1)
 		}
 		l.Debugf("will serve snapshot %+v", snapshot)
-
 		// Add the snapshot to the cache
 		if err := cache.SetSnapshot(ctx, nodeGroup, snapshot); err != nil {
 			l.Errorf("snapshot error %q for %+v", err, snapshot)
