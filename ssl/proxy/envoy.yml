@@ -3,15 +3,33 @@ admin:
     socket_address:
       address: 0.0.0.0
       port_value: 9901
-
 static_resources:
   listeners:
   - address:
       socket_address:
         address: 0.0.0.0
         port_value: 10000
+    listener_filters:
+    - name: "envoy.filters.listener.tls_inspector"
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector    
     filter_chains:
-    - filters:    
+    - filter_chain_match:
+        server_names: ["host.docker.internal"]
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: /etc/server-cert.pem
+              private_key:
+                filename: /etc/server-key.pem
+            validation_context:
+              trusted_ca:
+                filename: /etc/myca.crt
+      filters:    
       - name: envoy.filters.network.http_connection_manager
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
@@ -28,11 +46,13 @@ static_resources:
                   prefix: "/"
                 route:
                   cluster: local_service
-                  host_rewrite_literal: host.docker.internal
           http_filters:
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - filter_chain_match:
+        server_names: ["localhost"]
       transport_socket:
         name: envoy.transport_sockets.tls
         typed_config:
@@ -46,6 +66,27 @@ static_resources:
             validation_context:
               trusted_ca:
                 filename: /etc/myca.crt
+      filters:    
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          codec_type: AUTO
+          stat_prefix: ingress_http
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: service
+              domains:
+              - "*"
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: local_service
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
   clusters:
   - name: local_service
