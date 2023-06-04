@@ -236,6 +236,16 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 				},
 			},
 		},
+		ListenerFilters: []*listener.ListenerFilter{
+			{
+				Name: "envoy.filters.listener.tls_inspector",
+				ConfigType: &listener.ListenerFilter_TypedConfig{
+					TypedConfig: &any.Any{
+						TypeUrl: "type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector",
+					},
+				},
+			},
+		},
 		FilterChains: []*listener.FilterChain{{
 			Filters: []*listener.Filter{{
 				Name: wellknown.HTTPConnectionManager,
