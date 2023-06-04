@@ -5,7 +5,6 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/auth"
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
-	"github.com/golang/protobuf/ptypes/wrappers"
 	"istio.io/pkg/log"
 )
 
@@ -102,8 +101,8 @@ func CreateDownStreamContext() *auth.DownstreamTlsContext {
 		// RequireClientCertificate: &wrappers.BoolValue{
 		// 	Value: true,
 		// },
-		RequireSni: &wrappers.BoolValue{
-			Value: true,
-		},
+		// RequireSni: &wrappers.BoolValue{
+		// 	Value: true,
+		// },
 	}
 }

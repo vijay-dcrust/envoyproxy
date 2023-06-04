@@ -40,6 +40,7 @@ import (
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
 	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
+	partner "github.com/vijay-dcrust/envoyproxy/xds/control-plane/partner"
 	sds "github.com/vijay-dcrust/envoyproxy/xds/control-plane/sds"
 )
 
@@ -219,7 +220,10 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 		panic(err)
 	}
 
-	return &listener.Listener{
+	filterChainMatch := &listener.FilterChainMatch{
+		ServerNames: []string{"localhost", "host.docker.internal"},
+	}
+	listener := &listener.Listener{
 		Name: listenerName,
 		Address: &core.Address{
 			Address: &core.Address_SocketAddress{
@@ -250,6 +254,8 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 			},
 		}},
 	}
+	listener.FilterChains[0].FilterChainMatch = filterChainMatch
+	return listener
 }
 
 func makeConfigSource() *core.ConfigSource {
@@ -376,7 +382,7 @@ func main() {
 		l.Errorf("snapshot error %q for %+v", err, snapshot)
 		os.Exit(1)
 	}
-
+	partner.GetPartnerList()
 	// Run the xDS server
 	cb := &testv3.Callbacks{Debug: true}
 	srv := serverv3.NewServer(ctx, cache, cb)
