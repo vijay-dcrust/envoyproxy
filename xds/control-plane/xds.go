@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -63,22 +62,19 @@ const (
 	grpcMaxConcurrentStreams = 1000000
 )
 
-func makeCluster(clusterName string) *cluster.Cluster {
+func makeCluster(clusterName string, destinationHost string, upstreamPort int) *cluster.Cluster {
 	return &cluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment:       makeEndpoint(clusterName),
+		LoadAssignment:       makeEndpoint(clusterName, destinationHost, upstreamPort),
 		DnsLookupFamily:      cluster.Cluster_V4_ONLY,
 	}
 }
 
-func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
-	port := uint32(UpstreamPort1)
-	if clusterName == ClusterName2 {
-		port = UpstreamPort2
-	}
+func makeEndpoint(clusterName string, destinationHost string, upstreamPort int) *endpoint.ClusterLoadAssignment {
+	port := uint32(upstreamPort)
 	return &endpoint.ClusterLoadAssignment{
 		ClusterName: clusterName,
 		Endpoints: []*endpoint.LocalityLbEndpoints{{
@@ -89,7 +85,7 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 							Address: &core.Address_SocketAddress{
 								SocketAddress: &core.SocketAddress{
 									Protocol: core.SocketAddress_TCP,
-									Address:  UpstreamHost,
+									Address:  destinationHost,
 									PortSpecifier: &core.SocketAddress_PortValue{
 										PortValue: port,
 									},
@@ -103,7 +99,7 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 	}
 }
 
-func makeRoute(routeName string, weight uint32, clusterName1, clusterName2 string) *route.RouteConfiguration {
+func makeRoute(routeName string, clusterName string, DestinationHost string) *route.RouteConfiguration {
 	routeConfiguration := &route.RouteConfiguration{
 		Name: routeName,
 		VirtualHosts: []*route.VirtualHost{{
@@ -111,83 +107,83 @@ func makeRoute(routeName string, weight uint32, clusterName1, clusterName2 strin
 			Domains: []string{"*"},
 		}},
 	}
-	switch weight {
-	case 0:
-		routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
+	// switch weight {
+	// case 0:
+	routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{
+				Prefix: "/",
+			},
+		},
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_Cluster{
+					Cluster: clusterName,
+				},
+				HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
+					HostRewriteLiteral: DestinationHost,
 				},
 			},
-			Action: &route.Route_Route{
-				Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_Cluster{
-						Cluster: clusterName1,
-					},
-					HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-						HostRewriteLiteral: UpstreamHost,
-					},
-				},
-			},
-		}}
+		},
+	}}
 
-	case 100:
-		routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
-				},
-			},
-			Action: &route.Route_Route{
-				Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_Cluster{
-						Cluster: clusterName2,
-					},
-					HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-						HostRewriteLiteral: UpstreamHost,
-					},
-				},
-			},
-		}}
-		// canary-roll out:
-	default:
-		routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
-				},
-			},
-			Action: &route.Route_Route{
-				Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_WeightedClusters{
-						WeightedClusters: &route.WeightedCluster{
-							TotalWeight: &wrapperspb.UInt32Value{
-								Value: 100,
-							},
-							Clusters: []*route.WeightedCluster_ClusterWeight{
-								{
-									Name: clusterName1,
-									Weight: &wrapperspb.UInt32Value{
-										Value: 100 - weight,
-									},
-								},
-								{
-									Name: clusterName2,
-									Weight: &wrapperspb.UInt32Value{
-										Value: weight,
-									},
-								},
-							},
-						},
-					},
-					HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-						HostRewriteLiteral: UpstreamHost,
-					},
-				},
-			},
-		}}
+	// case 100:
+	// 	routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
+	// 		Match: &route.RouteMatch{
+	// 			PathSpecifier: &route.RouteMatch_Prefix{
+	// 				Prefix: "/",
+	// 			},
+	// 		},
+	// 		Action: &route.Route_Route{
+	// 			Route: &route.RouteAction{
+	// 				ClusterSpecifier: &route.RouteAction_Cluster{
+	// 					Cluster: clusterName2,
+	// 				},
+	// 				HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
+	// 					HostRewriteLiteral: UpstreamHost,
+	// 				},
+	// 			},
+	// 		},
+	// 	}}
+	// 	// canary-roll out:
+	// default:
+	// 	routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
+	// 		Match: &route.RouteMatch{
+	// 			PathSpecifier: &route.RouteMatch_Prefix{
+	// 				Prefix: "/",
+	// 			},
+	// 		},
+	// 		Action: &route.Route_Route{
+	// 			Route: &route.RouteAction{
+	// 				ClusterSpecifier: &route.RouteAction_WeightedClusters{
+	// 					WeightedClusters: &route.WeightedCluster{
+	// 						TotalWeight: &wrapperspb.UInt32Value{
+	// 							Value: 100,
+	// 						},
+	// 						Clusters: []*route.WeightedCluster_ClusterWeight{
+	// 							{
+	// 								Name: clusterName1,
+	// 								Weight: &wrapperspb.UInt32Value{
+	// 									Value: 100 - weight,
+	// 								},
+	// 							},
+	// 							{
+	// 								Name: clusterName2,
+	// 								Weight: &wrapperspb.UInt32Value{
+	// 									Value: weight,
+	// 								},
+	// 							},
+	// 						},
+	// 					},
+	// 				},
+	// 				HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
+	// 					HostRewriteLiteral: UpstreamHost,
+	// 				},
+	// 			},
+	// 		},
+	// 	}}
 
-	}
+	//}
 	return routeConfiguration
 }
 
@@ -290,12 +286,12 @@ var (
 	version int
 )
 
-func GenerateSnapshot(weight uint32) (*cachev3.Snapshot, error) {
+func GenerateSnapshot(weight uint32, clusterName string, destinationHost string, upstreamPort int) (*cachev3.Snapshot, error) {
 	version++
-	var secrets []types.Resource
-	for _, s := range sds.CreateSecret() {
-		secrets = append(secrets, s)
-	}
+	// var secrets []types.Resource
+	// for _, s := range sds.CreateSecret() {
+	// 	secrets = append(secrets, s)
+	// }
 
 	nextversion := fmt.Sprintf("snapshot-%d", version)
 	fmt.Println("publishing version: ", nextversion)
@@ -304,17 +300,16 @@ func GenerateSnapshot(weight uint32) (*cachev3.Snapshot, error) {
 		map[resource.Type][]types.Resource{
 			resource.EndpointType: {},
 			resource.ClusterType: {
-				makeCluster(ClusterName1),
-				makeCluster(ClusterName2),
+				makeCluster(clusterName, destinationHost, upstreamPort),
 			},
 			resource.RouteType: {
-				makeRoute(RouteName, weight, ClusterName1, ClusterName2),
+				makeRoute(RouteName, clusterName, destinationHost),
 			},
 			resource.ListenerType: {
 				makeHTTPListener(ListenerName, RouteName),
 			},
 			resource.RuntimeType: {},
-			resource.SecretType:  secrets,
+			resource.SecretType:  {},
 		},
 	)
 }
@@ -376,7 +371,16 @@ func main() {
 	cache := cachev3.NewSnapshotCache(false, ClusterNodeHasher{}, l)
 
 	// Create the snapshot that we'll serve to Envoy
-	snapshot, err := GenerateSnapshot(0)
+	partnerList, err := partner.GetPartnerList()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	clusterName := partnerList[0].Name
+	destinationHost := partnerList[0].Destination
+	upstreamPort := partnerList[0].Dest_Port
+	fmt.Printf("Upstream Port value %d", upstreamPort)
+
+	snapshot, err := GenerateSnapshot(0, clusterName, destinationHost, upstreamPort)
 	if err != nil {
 		l.Errorf("could not generate snapshot: %+v", err)
 		os.Exit(1)
@@ -392,7 +396,6 @@ func main() {
 		l.Errorf("snapshot error %q for %+v", err, snapshot)
 		os.Exit(1)
 	}
-	partner.GetPartnerList()
 	// Run the xDS server
 	cb := &testv3.Callbacks{Debug: true}
 	srv := serverv3.NewServer(ctx, cache, cb)
@@ -411,7 +414,7 @@ func main() {
 		clampedWeight := clampWeight(weight)
 		fmt.Println("setting weight to", clampedWeight)
 
-		snapshot, err = GenerateSnapshot(clampedWeight)
+		snapshot, err = GenerateSnapshot(clampedWeight, clusterName, destinationHost, upstreamPort)
 		if err != nil {
 			l.Errorf("could not generate snapshot: %+v", err)
 			os.Exit(1)

@@ -1,12 +1,25 @@
 
+# partners:
+# - name: vendor-1
+#   tls_auth: tls
+#   hostname: vendor-1.gxs.com.sg
+#   destination: partner-api.sgbank.dev 
+#   dest_port: 443
+# - name: vendor-2
+#   tls_auth: mtls
+#   hostname: vendor-2.gxs.com.sg
+#   destination: api.sgbank.dev 
+#   dest_port: 443
+
+
 partners:
 - name: vendor-1
   tls_auth: tls
-  hostname: vendor-1.gxs.com.sg
-  destination: partner-api.sgbank.dev 
-  dest_port: 443
+  hostname: localhost
+  destination: localhost 
+  dest_port: 8081
 - name: vendor-2
-  tls_auth: mtls
-  hostname: vendor-2.gxs.com.sg
-  destination: api.sgbank.dev 
-  dest_port: 443
+  tls_auth: tls
+  hostname: localhost
+  destination: localhost 
+  dest_port: 8080

@@ -1,6 +1,7 @@
 package partner
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -13,6 +14,7 @@ type partner struct {
 	Tls_Auth    string `yaml:"tls_auth"`
 	HostName    string `yaml:"hostname"`
 	Destination string `yaml:"destination"`
+	Dest_Port   int    `yaml:"dest_port"`
 }
 
 type Cluster struct {
@@ -21,7 +23,7 @@ type Cluster struct {
 	DestPort    int
 }
 
-func GetPartnerList() {
+func GetPartnerList() ([]partner, error) {
 	yfile, err := ioutil.ReadFile("/Users/vijay.pal/public_projects/envoyproxy/xds/control-plane/partner/config.yaml")
 	if err != nil {
 
@@ -39,6 +41,7 @@ func GetPartnerList() {
 			fmt.Printf("%d -> %s\n", k, l)
 
 		}
+		return v, nil
 	}
-	//return partnerData
+	return []partner{}, errors.New("empty partner list")
 }
