@@ -5,6 +5,7 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/auth"
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
+	"github.com/golang/protobuf/ptypes/wrappers"
 	"istio.io/pkg/log"
 )
 
@@ -54,24 +55,11 @@ func CreateSecret() []*auth.Secret {
 }
 
 // CreateDownStreamContext returns a tls context to be added into listener/cluster tls filters
-func CreateDownStreamContext() *auth.DownstreamTlsContext {
+func CreateDownStreamContext(tls_auth string) *auth.DownstreamTlsContext {
 	secretName := "server-cert"
 	log.Infof(">>>>>>>>>>>>>>>>>>> creating Secret " + secretName)
-	// priv, err := ioutil.ReadFile("server-key.pem")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// pub, err := ioutil.ReadFile("server-cert.pem")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
 
-	// ca, err := ioutil.ReadFile("ca.crt")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	return &auth.DownstreamTlsContext{
+	downStreamContext := &auth.DownstreamTlsContext{
 		CommonTlsContext: &auth.CommonTlsContext{
 			// TlsParams: &auth.TlsParameters{
 			// 	TlsMinimumProtocolVersion: auth.TlsParameters_TLSv1_3,
@@ -105,4 +93,10 @@ func CreateDownStreamContext() *auth.DownstreamTlsContext {
 		// 	Value: true,
 		// },
 	}
+	if tls_auth == "mtls" {
+		downStreamContext.RequireClientCertificate = &wrappers.BoolValue{
+			Value: true,
+		}
+	}
+	return downStreamContext
 }

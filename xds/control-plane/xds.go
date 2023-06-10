@@ -127,7 +127,7 @@ func makeRoute(routeName string, clusterName string, destinationHost string) *ro
 	return routeConfiguration
 }
 
-func makeHTTPListener(listenerName string, route string, listenerPort int) *listener.Listener {
+func makeHTTPListener(listenerName string, route string, listenerPort int, tls_auth string) *listener.Listener {
 	// HTTP filter configuration
 	manager := &hcm.HttpConnectionManager{
 		CodecType:  hcm.HttpConnectionManager_AUTO,
@@ -151,7 +151,7 @@ func makeHTTPListener(listenerName string, route string, listenerPort int) *list
 	if err != nil {
 		panic(err)
 	}
-	downstreamTlsContextBytes, err := proto.Marshal(sds.CreateDownStreamContext())
+	downstreamTlsContextBytes, err := proto.Marshal(sds.CreateDownStreamContext(tls_auth))
 	if err != nil {
 		panic(err)
 	}
@@ -226,7 +226,7 @@ var (
 	version int
 )
 
-func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []string, upstreamPort []int) (*cachev3.Snapshot, error) {
+func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []string, upstreamPort []int, tlsAuth []string) (*cachev3.Snapshot, error) {
 	version++
 	// var secrets []types.Resource
 	// for _, s := range sds.CreateSecret() {
@@ -245,7 +245,7 @@ func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []str
 		firstlistenerPort++
 		clusterObj := makeCluster(config, destinationHost[i], upstreamPort[i])
 		routeObj := makeRoute(config, config, destinationHost[i])
-		listenerObj := makeHTTPListener(config, config, firstlistenerPort)
+		listenerObj := makeHTTPListener(config, config, firstlistenerPort, tlsAuth[i])
 		listenerResources = append(listenerResources, listenerObj)
 
 		// Add the cluster to the snapshot
@@ -340,17 +340,19 @@ func main() {
 	var clusterNameList []string
 	var destinationHostList []string
 	var portList []int
+	var tlsAuthList []string
 	for _, partner := range partnerList {
 		clusterNameList = append(clusterNameList, partner.Name)
 		destinationHostList = append(destinationHostList, partner.Destination)
 		portList = append(portList, partner.Dest_Port)
+		tlsAuthList = append(tlsAuthList, partner.Tls_Auth)
 	}
 	// clusterName := partnerList[0].Name
 	// destinationHost := partnerList[0].Destination
 	upstreamPort := partnerList[0].Dest_Port
 	fmt.Printf("Upstream Port value %d", upstreamPort)
 
-	snapshot, err := GenerateSnapshot(0, clusterNameList, destinationHostList, portList)
+	snapshot, err := GenerateSnapshot(0, clusterNameList, destinationHostList, portList, tlsAuthList)
 	if err != nil {
 		l.Errorf("could not generate snapshot: %+v", err)
 		os.Exit(1)
@@ -367,7 +369,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	snapshot, err = GenerateSnapshot(0, clusterNameList, destinationHostList, portList)
+	snapshot, err = GenerateSnapshot(0, clusterNameList, destinationHostList, portList, tlsAuthList)
 	if err != nil {
 		l.Errorf("could not generate snapshot: %+v", err)
 		os.Exit(1)
