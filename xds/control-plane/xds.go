@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"net"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/any"
@@ -53,7 +50,7 @@ const (
 	// ClusterName2  = "cluster_b"
 	RouteName    = "local_route"
 	ListenerName = "listener_0"
-	ListenerPort = 10000
+	//ListenerPort = 10000
 	// UpstreamHost  = "127.0.0.1"
 	// UpstreamPort1 = 8080
 	// UpstreamPort2 = 8081
@@ -99,11 +96,11 @@ func makeEndpoint(clusterName string, destinationHost string, upstreamPort int) 
 	}
 }
 
-func makeRoute(routeName string, clusterName string, DestinationHost string) *route.RouteConfiguration {
+func makeRoute(routeName string, clusterName string, destinationHost string) *route.RouteConfiguration {
 	routeConfiguration := &route.RouteConfiguration{
 		Name: routeName,
 		VirtualHosts: []*route.VirtualHost{{
-			Name:    "local_service",
+			Name:    clusterName,
 			Domains: []string{"*"},
 		}},
 	}
@@ -121,73 +118,16 @@ func makeRoute(routeName string, clusterName string, DestinationHost string) *ro
 					Cluster: clusterName,
 				},
 				HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-					HostRewriteLiteral: DestinationHost,
+					HostRewriteLiteral: destinationHost,
 				},
 			},
 		},
 	}}
 
-	// case 100:
-	// 	routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-	// 		Match: &route.RouteMatch{
-	// 			PathSpecifier: &route.RouteMatch_Prefix{
-	// 				Prefix: "/",
-	// 			},
-	// 		},
-	// 		Action: &route.Route_Route{
-	// 			Route: &route.RouteAction{
-	// 				ClusterSpecifier: &route.RouteAction_Cluster{
-	// 					Cluster: clusterName2,
-	// 				},
-	// 				HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-	// 					HostRewriteLiteral: UpstreamHost,
-	// 				},
-	// 			},
-	// 		},
-	// 	}}
-	// 	// canary-roll out:
-	// default:
-	// 	routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-	// 		Match: &route.RouteMatch{
-	// 			PathSpecifier: &route.RouteMatch_Prefix{
-	// 				Prefix: "/",
-	// 			},
-	// 		},
-	// 		Action: &route.Route_Route{
-	// 			Route: &route.RouteAction{
-	// 				ClusterSpecifier: &route.RouteAction_WeightedClusters{
-	// 					WeightedClusters: &route.WeightedCluster{
-	// 						TotalWeight: &wrapperspb.UInt32Value{
-	// 							Value: 100,
-	// 						},
-	// 						Clusters: []*route.WeightedCluster_ClusterWeight{
-	// 							{
-	// 								Name: clusterName1,
-	// 								Weight: &wrapperspb.UInt32Value{
-	// 									Value: 100 - weight,
-	// 								},
-	// 							},
-	// 							{
-	// 								Name: clusterName2,
-	// 								Weight: &wrapperspb.UInt32Value{
-	// 									Value: weight,
-	// 								},
-	// 							},
-	// 						},
-	// 					},
-	// 				},
-	// 				HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-	// 					HostRewriteLiteral: UpstreamHost,
-	// 				},
-	// 			},
-	// 		},
-	// 	}}
-
-	//}
 	return routeConfiguration
 }
 
-func makeHTTPListener(listenerName string, route string) *listener.Listener {
+func makeHTTPListener(listenerName string, route string, listenerPort int) *listener.Listener {
 	// HTTP filter configuration
 	manager := &hcm.HttpConnectionManager{
 		CodecType:  hcm.HttpConnectionManager_AUTO,
@@ -227,7 +167,7 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 					Protocol: core.SocketAddress_TCP,
 					Address:  "0.0.0.0",
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: ListenerPort,
+						PortValue: uint32(listenerPort),
 					},
 				},
 			},
@@ -286,32 +226,54 @@ var (
 	version int
 )
 
-func GenerateSnapshot(weight uint32, clusterName string, destinationHost string, upstreamPort int) (*cachev3.Snapshot, error) {
+func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []string, upstreamPort []int) (*cachev3.Snapshot, error) {
 	version++
 	// var secrets []types.Resource
 	// for _, s := range sds.CreateSecret() {
 	// 	secrets = append(secrets, s)
 	// }
+	// Create a new resources map to store the clusters
+	//listenerNameList := []string{"listener_0", "listener_1"}
+	//listenerPortList := []int{10000, 10001}
+	firstlistenerPort := 9999
+	//routeNameList := []string{"local_route_1", "local_route_2"}
+	//virtualHostNameList := []string{"local_service_1", "local_service_2"}
+	var clustersResources []types.Resource
+	var routeResources []types.Resource
+	var listenerResources []types.Resource
+	for i, config := range clusterName {
+		firstlistenerPort++
+		clusterObj := makeCluster(config, destinationHost[i], upstreamPort[i])
+		routeObj := makeRoute(config, config, destinationHost[i])
+		listenerObj := makeHTTPListener(config, config, firstlistenerPort)
+		listenerResources = append(listenerResources, listenerObj)
+
+		// Add the cluster to the snapshot
+		clustersResources = append(clustersResources, clusterObj)
+		routeResources = append(routeResources, routeObj)
+	}
+	// listenerObj := makeHTTPListener("listener_0", "local_route_1", 10000)
+	// listenerResources = append(listenerResources, listenerObj)
 
 	nextversion := fmt.Sprintf("snapshot-%d", version)
 	fmt.Println("publishing version: ", nextversion)
-	return cachev3.NewSnapshot(
+	snapshot, err := cachev3.NewSnapshot(
 		nextversion, // version needs to be different for different snapshots
 		map[resource.Type][]types.Resource{
 			resource.EndpointType: {},
-			resource.ClusterType: {
-				makeCluster(clusterName, destinationHost, upstreamPort),
-			},
-			resource.RouteType: {
-				makeRoute(RouteName, clusterName, destinationHost),
-			},
-			resource.ListenerType: {
-				makeHTTPListener(ListenerName, RouteName),
-			},
+			resource.ClusterType:  clustersResources,
+			//makeCluster(clusterName, destinationHost, upstreamPort),
+			resource.RouteType:    routeResources,
+			resource.ListenerType: listenerResources,
+			//{
+			// 	makeHTTPListener(ListenerName, routeNameList[0], 10000),
+			// },
 			resource.RuntimeType: {},
 			resource.SecretType:  {},
 		},
 	)
+
+	return snapshot, err
 }
 
 func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
@@ -375,12 +337,20 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	clusterName := partnerList[0].Name
-	destinationHost := partnerList[0].Destination
+	var clusterNameList []string
+	var destinationHostList []string
+	var portList []int
+	for _, partner := range partnerList {
+		clusterNameList = append(clusterNameList, partner.Name)
+		destinationHostList = append(destinationHostList, partner.Destination)
+		portList = append(portList, partner.Dest_Port)
+	}
+	// clusterName := partnerList[0].Name
+	// destinationHost := partnerList[0].Destination
 	upstreamPort := partnerList[0].Dest_Port
 	fmt.Printf("Upstream Port value %d", upstreamPort)
 
-	snapshot, err := GenerateSnapshot(0, clusterName, destinationHost, upstreamPort)
+	snapshot, err := GenerateSnapshot(0, clusterNameList, destinationHostList, portList)
 	if err != nil {
 		l.Errorf("could not generate snapshot: %+v", err)
 		os.Exit(1)
@@ -396,49 +366,56 @@ func main() {
 		l.Errorf("snapshot error %q for %+v", err, snapshot)
 		os.Exit(1)
 	}
+
+	snapshot, err = GenerateSnapshot(0, clusterNameList, destinationHostList, portList)
+	if err != nil {
+		l.Errorf("could not generate snapshot: %+v", err)
+		os.Exit(1)
+	}
+	if err := snapshot.Consistent(); err != nil {
+		l.Errorf("snapshot inconsistency: %+v\n%+v", snapshot, err)
+		os.Exit(1)
+	}
+	l.Debugf("will serve snapshot %+v", snapshot)
+
+	// Add the snapshot to the cache
+	if err := cache.SetSnapshot(ctx, nodeGroup, snapshot); err != nil {
+		l.Errorf("snapshot error %q for %+v", err, snapshot)
+		os.Exit(1)
+	}
+
 	// Run the xDS server
 	cb := &testv3.Callbacks{Debug: true}
 	srv := serverv3.NewServer(ctx, cache, cb)
 	go RunServer(ctx, srv, xdsPort)
+	// for {
+	// 	for i, partner := range partnerList {
+	// 		if i == 0 {
+	// 			continue
+	// 		}
+	// 		clusterName := partner.Name
+	// 		destinationHost := partner.Destination
+	// 		upstreamPort := partner.Dest_Port
+	// 		fmt.Printf("Upstream Port value %d", upstreamPort)
 
-	reader := bufio.NewReader(os.Stdin)
-	for {
+	// 		snapshot, err := GenerateSnapshot(0, clusterName, destinationHost, upstreamPort)
+	// 		if err != nil {
+	// 			l.Errorf("could not generate snapshot: %+v", err)
+	// 			os.Exit(1)
+	// 		}
+	// 		if err := snapshot.Consistent(); err != nil {
+	// 			l.Errorf("snapshot inconsistency: %+v\n%+v", snapshot, err)
+	// 			os.Exit(1)
+	// 		}
+	// 		l.Debugf("will serve snapshot %+v", snapshot)
+	// 		// Add the snapshot to the cache
+	// 		if err := cache.SetSnapshot(ctx, nodeGroup, snapshot); err != nil {
+	// 			l.Errorf("snapshot error %q for %+v", err, snapshot)
+	// 			os.Exit(1)
+	// 		}
 
-		fmt.Print("Enter weight for cluster-b: ")
-		text, _ := reader.ReadString('\n')
-		text = strings.TrimSpace(text)
-		if text == "" {
-			continue
-		}
-		weight, _ := strconv.Atoi(text)
-		clampedWeight := clampWeight(weight)
-		fmt.Println("setting weight to", clampedWeight)
-
-		snapshot, err = GenerateSnapshot(clampedWeight, clusterName, destinationHost, upstreamPort)
-		if err != nil {
-			l.Errorf("could not generate snapshot: %+v", err)
-			os.Exit(1)
-		}
-		if err := snapshot.Consistent(); err != nil {
-			l.Errorf("snapshot inconsistency: %+v\n%+v", snapshot, err)
-			os.Exit(1)
-		}
-		l.Debugf("will serve snapshot %+v", snapshot)
-		// Add the snapshot to the cache
-		if err := cache.SetSnapshot(ctx, nodeGroup, snapshot); err != nil {
-			l.Errorf("snapshot error %q for %+v", err, snapshot)
-			os.Exit(1)
-		}
-
-	}
-}
-
-func clampWeight(weight int) uint32 {
-	// if weight > 100 {
-	// 	weight = 100
+	// 	}
+	//
 	// }
-	if weight < 0 {
-		weight = 0
-	}
-	return uint32(weight)
+	time.Sleep(1000 * time.Second)
 }

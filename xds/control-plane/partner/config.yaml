@@ -17,9 +17,14 @@ partners:
   tls_auth: tls
   hostname: localhost
   destination: localhost 
-  dest_port: 8081
+  dest_port: 8080
 - name: vendor-2
   tls_auth: tls
   hostname: localhost
   destination: localhost 
-  dest_port: 8080
+  dest_port: 8081
+- name: vendor-3
+  tls_auth: tls
+  hostname: localhost
+  destination: localhost 
+  dest_port: 8082
