@@ -49,14 +49,14 @@ import (
 
 const (
 	// don't use dots in resource name
-	ClusterName1  = "cluster_a"
-	ClusterName2  = "cluster_b"
-	RouteName     = "local_route"
-	ListenerName  = "listener_0"
-	ListenerPort  = 10000
-	UpstreamHost  = "127.0.0.1"
-	UpstreamPort1 = 8080
-	UpstreamPort2 = 8081
+	// ClusterName1  = "cluster_a"
+	// ClusterName2  = "cluster_b"
+	RouteName    = "local_route"
+	ListenerName = "listener_0"
+	ListenerPort = 10000
+	// UpstreamHost  = "127.0.0.1"
+	// UpstreamPort1 = 8080
+	// UpstreamPort2 = 8081
 
 	xdsPort                  = 9977
 	grpcMaxConcurrentStreams = 1000000
