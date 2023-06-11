@@ -127,7 +127,7 @@ func makeRoute(routeName string, clusterName string, destinationHost string) *ro
 	return routeConfiguration
 }
 
-func makeHTTPListener(listenerName string, route string, listenerPort int, tls_auth string) *listener.Listener {
+func makeHTTPListener(listenerName string, route string, listenerPort int, tls_auth string, hostName string) *listener.Listener {
 	// HTTP filter configuration
 	manager := &hcm.HttpConnectionManager{
 		CodecType:  hcm.HttpConnectionManager_AUTO,
@@ -151,7 +151,7 @@ func makeHTTPListener(listenerName string, route string, listenerPort int, tls_a
 	if err != nil {
 		panic(err)
 	}
-	downstreamTlsContextBytes, err := proto.Marshal(sds.CreateDownStreamContext(tls_auth))
+	downstreamTlsContextBytes, err := proto.Marshal(sds.CreateDownStreamContext(tls_auth, listenerName, hostName))
 	if err != nil {
 		panic(err)
 	}
@@ -226,7 +226,7 @@ var (
 	version int
 )
 
-func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []string, upstreamPort []int, tlsAuth []string) (*cachev3.Snapshot, error) {
+func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []string, upstreamPort []int, tlsAuth []string, hostNameList []string) (*cachev3.Snapshot, error) {
 	version++
 	// var secrets []types.Resource
 	// for _, s := range sds.CreateSecret() {
@@ -245,7 +245,7 @@ func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []str
 		firstlistenerPort++
 		clusterObj := makeCluster(config, destinationHost[i], upstreamPort[i])
 		routeObj := makeRoute(config, config, destinationHost[i])
-		listenerObj := makeHTTPListener(config, config, firstlistenerPort, tlsAuth[i])
+		listenerObj := makeHTTPListener(config, config, firstlistenerPort, tlsAuth[i], hostNameList[i])
 		listenerResources = append(listenerResources, listenerObj)
 
 		// Add the cluster to the snapshot
@@ -341,18 +341,20 @@ func main() {
 	var destinationHostList []string
 	var portList []int
 	var tlsAuthList []string
+	var hostNameList []string
 	for _, partner := range partnerList {
 		clusterNameList = append(clusterNameList, partner.Name)
 		destinationHostList = append(destinationHostList, partner.Destination)
 		portList = append(portList, partner.Dest_Port)
 		tlsAuthList = append(tlsAuthList, partner.Tls_Auth)
+		hostNameList = append(hostNameList, partner.HostName)
 	}
 	// clusterName := partnerList[0].Name
 	// destinationHost := partnerList[0].Destination
 	upstreamPort := partnerList[0].Dest_Port
 	fmt.Printf("Upstream Port value %d", upstreamPort)
 
-	snapshot, err := GenerateSnapshot(0, clusterNameList, destinationHostList, portList, tlsAuthList)
+	snapshot, err := GenerateSnapshot(0, clusterNameList, destinationHostList, portList, tlsAuthList, hostNameList)
 	if err != nil {
 		l.Errorf("could not generate snapshot: %+v", err)
 		os.Exit(1)
@@ -368,24 +370,6 @@ func main() {
 		l.Errorf("snapshot error %q for %+v", err, snapshot)
 		os.Exit(1)
 	}
-
-	snapshot, err = GenerateSnapshot(0, clusterNameList, destinationHostList, portList, tlsAuthList)
-	if err != nil {
-		l.Errorf("could not generate snapshot: %+v", err)
-		os.Exit(1)
-	}
-	if err := snapshot.Consistent(); err != nil {
-		l.Errorf("snapshot inconsistency: %+v\n%+v", snapshot, err)
-		os.Exit(1)
-	}
-	l.Debugf("will serve snapshot %+v", snapshot)
-
-	// Add the snapshot to the cache
-	if err := cache.SetSnapshot(ctx, nodeGroup, snapshot); err != nil {
-		l.Errorf("snapshot error %q for %+v", err, snapshot)
-		os.Exit(1)
-	}
-
 	// Run the xDS server
 	cb := &testv3.Callbacks{Debug: true}
 	srv := serverv3.NewServer(ctx, cache, cb)

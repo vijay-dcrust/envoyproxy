@@ -11,7 +11,8 @@
 #   destination: api.sgbank.dev 
 #   dest_port: 443
 
-
+# cert:
+#   generate_missing_cert: yes
 partners:
 - name: vendor-1
   tls_auth: tls
@@ -19,12 +20,12 @@ partners:
   destination: localhost 
   dest_port: 8080
 - name: vendor-2
-  tls_auth: mtls
-  hostname: localhost
-  destination: localhost 
-  dest_port: 8081
-- name: vendor-3
   tls_auth: tls
   hostname: localhost
   destination: localhost 
-  dest_port: 8082
+  dest_port: 8081
+# - name: vendor-3
+#   tls_auth: tls
+#   hostname: localhost
+#   destination: localhost 
+#   dest_port: 8082
