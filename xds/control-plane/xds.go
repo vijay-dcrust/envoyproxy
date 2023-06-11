@@ -36,8 +36,8 @@ import (
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
 	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
+	certsmgmt "github.com/vijay-dcrust/envoyproxy/xds/control-plane/certsmgmt"
 	partner "github.com/vijay-dcrust/envoyproxy/xds/control-plane/partner"
-	sds "github.com/vijay-dcrust/envoyproxy/xds/control-plane/sds"
 )
 
 // This is mostly copied from
@@ -151,7 +151,7 @@ func makeHTTPListener(listenerName string, route string, listenerPort int, tls_a
 	if err != nil {
 		panic(err)
 	}
-	downstreamTlsContextBytes, err := proto.Marshal(sds.CreateDownStreamContext(tls_auth, listenerName, hostName))
+	downstreamTlsContextBytes, err := proto.Marshal(certsmgmt.CreateDownStreamContext(tls_auth, listenerName, hostName))
 	if err != nil {
 		panic(err)
 	}
@@ -229,7 +229,7 @@ var (
 func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []string, upstreamPort []int, tlsAuth []string, hostNameList []string) (*cachev3.Snapshot, error) {
 	version++
 	// var secrets []types.Resource
-	// for _, s := range sds.CreateSecret() {
+	// for _, s := range certsmgmt.CreateSecret() {
 	// 	secrets = append(secrets, s)
 	// }
 	// Create a new resources map to store the clusters

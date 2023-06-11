@@ -1,4 +1,4 @@
-package sds
+package cds
 
 import (
 	"bytes"
@@ -24,18 +24,82 @@ const (
 	RootDir = "/Users/vijay.pal/public_projects/envoyproxy/xds/control-plane"
 )
 
-var (
-	CaCertFile = fmt.Sprintf("%s/%s", RootDir, "ca.crt")
-	CaKeyFile  = fmt.Sprintf("%s/%s", RootDir, "ca.key")
-)
+func createCACertificate(vendor string) error {
+	ca := &x509.Certificate{
+		SerialNumber: big.NewInt(2019),
+		Subject: pkix.Name{
+			Organization:  []string{"Company, INC."},
+			Country:       []string{"SG"},
+			Province:      []string{""},
+			Locality:      []string{"Singapore"},
+			StreetAddress: []string{"One North"},
+			PostalCode:    []string{"768979"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(10, 0, 0),
+		IsCA:                  true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
 
-func generateCertificate(vendor string, hostname string) error {
-	caf, e := ioutil.ReadFile(CaCertFile)
+	// create our private and public key
+	caPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return err
+	}
+
+	// create the CA
+	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
+	if err != nil {
+		return err
+	}
+
+	// pem encode
+	caPEM := new(bytes.Buffer)
+	pem.Encode(caPEM, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: caBytes,
+	})
+
+	caPrivKeyPEM := new(bytes.Buffer)
+	pem.Encode(caPrivKeyPEM, &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(caPrivKey),
+	})
+	caCertFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "ca-cert.pem")
+	caKeyFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "ca-key.pem")
+
+	ioutil.WriteFile(caCertFileName, caPEM.Bytes(), 0644)
+	err = ioutil.WriteFile(caKeyFileName, caPrivKeyPEM.Bytes(), 0644)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func generateCertificate(vendor string, hostname string, usage string) error {
+	caCertFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "ca-cert.pem")
+	caKeyFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "ca-key.pem")
+	if _, err := os.Stat(caCertFileName); err == nil {
+		fmt.Printf("%s CA Certificate File exists\n", vendor)
+	} else {
+		fmt.Printf("%s CA Certificate File does not exist\n", vendor)
+		createCACertificate(vendor)
+	}
+	if _, err := os.Stat(caKeyFileName); err == nil {
+		fmt.Printf("%s CA Key File exists\n", vendor)
+	} else {
+		fmt.Printf("%s CA Key File does not exist\n", vendor)
+		createCACertificate(vendor)
+	}
+
+	caf, e := ioutil.ReadFile(caCertFileName)
 	if e != nil {
 		fmt.Println("cfload:", e.Error())
 		os.Exit(1)
 	}
-	ckf, e := ioutil.ReadFile(CaKeyFile)
+	ckf, e := ioutil.ReadFile(caKeyFileName)
 	if e != nil {
 		fmt.Println("kfload:", e.Error())
 		os.Exit(1)
@@ -92,38 +156,45 @@ func generateCertificate(vendor string, hostname string) error {
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
 	})
-	certFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "server-cert.pem")
-	keyFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "server-key.pem")
+	certFileName := fmt.Sprintf("%s/%s-%s-%s", RootDir, vendor, usage, "cert.pem")
+	keyFileName := fmt.Sprintf("%s/%s-%s-%s", RootDir, vendor, usage, "key.pem")
 
 	ioutil.WriteFile(certFileName, certPEM.Bytes(), 0644)
 	err = ioutil.WriteFile(keyFileName, certPrivKeyPEM.Bytes(), 0644)
 
 	return err
 }
-func getCertificate(vendor string, hostname string) (serverCertFile string, serverKeyFile string) {
+func getCertificate(vendor string, hostname string, tls_auth string) (serverCertFile string, serverKeyFile string) {
 	certFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "server-cert.pem")
 	keyFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "server-key.pem")
 	if _, err := os.Stat(certFileName); err == nil {
 		fmt.Printf("%s Certificate File exists\n", vendor)
 	} else {
 		fmt.Printf("%s Certificate File does not exist\n", vendor)
-		generateCertificate(vendor, hostname)
+		generateCertificate(vendor, hostname, "server")
+		if tls_auth == "mtls" {
+			generateCertificate(vendor, hostname, "client")
+
+		}
 	}
 	if _, err := os.Stat(keyFileName); err == nil {
 		fmt.Printf("%s Key File exists\n", vendor)
 	} else {
 		fmt.Printf("%s does not exist\n", vendor)
-		generateCertificate(vendor, hostname)
-	}
+		generateCertificate(vendor, hostname, "server")
+		if tls_auth == "mtls" {
+			generateCertificate(vendor, hostname, "client")
 
+		}
+	}
 	return certFileName, keyFileName
 }
 
 // CreateDownStreamContext returns a tls context to be added into listener/cluster tls filters
 func CreateDownStreamContext(tls_auth string, vendor string, hostName string) *auth.DownstreamTlsContext {
 	log.Infof(">>>>>>>>>>>>>>>>>>> Fetching Certificate for" + vendor)
-	serverCertFile, serverKeyFile := getCertificate(vendor, hostName)
-	//interMediateCAcert := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "interca-cert.pem")
+	serverCertFile, serverKeyFile := getCertificate(vendor, hostName, tls_auth)
+	caCertFileName := fmt.Sprintf("%s/%s-%s", RootDir, vendor, "ca-cert.pem")
 
 	downStreamContext := &auth.DownstreamTlsContext{
 		CommonTlsContext: &auth.CommonTlsContext{
@@ -135,7 +206,7 @@ func CreateDownStreamContext(tls_auth string, vendor string, hostName string) *a
 				ValidationContext: &auth.CertificateValidationContext{
 					TrustedCa: &core.DataSource{
 						//Specifier: &core.DataSource_InlineBytes{InlineBytes: []byte(ca)},
-						Specifier: &core.DataSource_Filename{Filename: CaCertFile},
+						Specifier: &core.DataSource_Filename{Filename: caCertFileName},
 					},
 					VerifySubjectAltName: []string{hostName},
 				},

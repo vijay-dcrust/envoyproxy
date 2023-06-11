@@ -20,7 +20,7 @@ partners:
   destination: localhost 
   dest_port: 8080
 - name: vendor-2
-  tls_auth: tls
+  tls_auth: mtls
   hostname: localhost
   destination: localhost 
   dest_port: 8081
