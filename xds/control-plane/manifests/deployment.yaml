@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/instance: dev-backend-g7
+    app.kubernetes.io/name: g7
+    helm.sh/chart: g7-1.0.0
+    app.kubernetes.io/built-by: gxs-sre
+  name: g7
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: g7
+      app.kubernetes.io/name: g7
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: g7
+        app.kubernetes.io/name: g7
+    spec:
+      containers:
+      - args:
+        - sh
+        - -c
+        - envoy --base-id 1 -c /etc/envoy/envoy.yaml
+        env:
+        - name: loglevel
+          value: debug
+        - name: DOGSTATSD_HOST
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.hostIP
+        - name: DD_ENTITY_ID
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.uid
+        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/g7:g7-gateway-v0.0.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: 9901
+          timeoutSeconds: 5
+        name: g7-gateway
+        ports:
+        - containerPort: 9901
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: 9901
+            scheme: HTTP
+          periodSeconds: 5
+          successThreshold: 2
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        startupProbe:
+          failureThreshold: 30
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: 9901
+          timeoutSeconds: 5
+      - args:
+        - sh
+        - -c
+        - /bin/xds
+        env:
+        - name: LOG_LEVEL
+          value: debug
+        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/g7:g7-xds-v0.0.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: 10000
+          timeoutSeconds: 5
+        name: xds
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: 10000
+            scheme: HTTP
+          periodSeconds: 5
+          successThreshold: 2
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        startupProbe:
+          failureThreshold: 30
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: 10000
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: partner-config
+          mountPath: /var/config
+          readOnly: true
+      volumes:
+        - name: partner-config
+          configMap:
+            name: partner-config
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      serviceAccount: guard-g7
+      serviceAccountName: guard-g7
