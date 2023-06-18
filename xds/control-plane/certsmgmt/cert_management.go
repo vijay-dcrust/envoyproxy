@@ -20,10 +20,15 @@ import (
 	"istio.io/pkg/log"
 )
 
-const (
+var (
 	RootDir = "/Users/vijay.pal/public_projects/envoyproxy/xds/control-plane"
 )
 
+func init() {
+	if os.Getenv("GRADE") == "production" {
+		RootDir = "/var/certs"
+	}
+}
 func createCACertificate(vendor string) error {
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2019),

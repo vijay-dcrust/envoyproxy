@@ -17,12 +17,12 @@ partners:
 - name: vendor-1
   tls_auth: tls
   hostname: localhost
-  destination: localhost 
+  destination: color-service 
   dest_port: 8080
 - name: vendor-2
   tls_auth: mtls
   hostname: localhost
-  destination: localhost 
+  destination: color-service 
   dest_port: 8081
 # - name: vendor-3
 #   tls_auth: tls

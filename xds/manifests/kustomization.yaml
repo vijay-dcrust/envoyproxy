@@ -1,10 +1,11 @@
 resources:
 - deployment.yaml
 - service.yaml
+- serviceaccount.yaml
 
 
 configMapGenerator:
-  - name: coredns
+  - name: partner-config
     files:
       - config.yaml
 

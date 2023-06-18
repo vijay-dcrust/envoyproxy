@@ -28,7 +28,7 @@ spec:
       - args:
         - sh
         - -c
-        - envoy --base-id 1 -c /etc/envoy/envoy.yaml
+        - envoy -c /etc/envoy/envoy.yaml
         env:
         - name: loglevel
           value: debug
@@ -42,14 +42,16 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: metadata.uid
-        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/g7:g7-gateway-v0.0.1
+        image: g7-gateway-v0.0.1
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
           periodSeconds: 10
           successThreshold: 1
-          tcpSocket:
+          httpGet:
+            path: /
             port: 9901
+            scheme: HTTP
           timeoutSeconds: 5
         name: g7-gateway
         ports:
@@ -58,10 +60,8 @@ spec:
           protocol: TCP
         readinessProbe:
           failureThreshold: 3
-          httpGet:
-            path: /
-            port: 9901
-            scheme: HTTP
+          tcpSocket:
+            port: 9977
           periodSeconds: 5
           successThreshold: 2
           timeoutSeconds: 5
@@ -72,6 +72,9 @@ spec:
           requests:
             cpu: 100m
             memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/certs
+          name: certs      
         startupProbe:
           failureThreshold: 30
           periodSeconds: 10
@@ -86,22 +89,22 @@ spec:
         env:
         - name: LOG_LEVEL
           value: debug
-        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/g7:g7-xds-v0.0.1
+        - name: GRADE
+          value: production
+        image: g7-xds-v0.0.1
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
           periodSeconds: 10
           successThreshold: 1
           tcpSocket:
-            port: 10000
+            port: 9977
           timeoutSeconds: 5
         name: xds
         readinessProbe:
           failureThreshold: 3
-          httpGet:
-            path: /
-            port: 10000
-            scheme: HTTP
+          tcpSocket:
+            port: 9977
           periodSeconds: 5
           successThreshold: 2
           timeoutSeconds: 5
@@ -117,16 +120,20 @@ spec:
           periodSeconds: 10
           successThreshold: 1
           tcpSocket:
-            port: 10000
+            port: 9977
           timeoutSeconds: 5
         volumeMounts:
         - name: partner-config
           mountPath: /var/config
           readOnly: true
+        - mountPath: /var/certs
+          name: certs      
       volumes:
         - name: partner-config
           configMap:
             name: partner-config
+        - name: certs
+          emptyDir: {}        
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       serviceAccount: guard-g7

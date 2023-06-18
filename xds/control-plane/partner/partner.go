@@ -5,9 +5,20 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
+
+var (
+	ConfigPath = "/Users/vijay.pal/public_projects/envoyproxy/xds/control-plane/partner"
+)
+
+func init() {
+	if os.Getenv("GRADE") == "production" {
+		ConfigPath = "/var/config"
+	}
+}
 
 type partner struct {
 	Name        string `yaml:"name"`
@@ -24,7 +35,9 @@ type Cluster struct {
 }
 
 func GetPartnerList() ([]partner, error) {
-	yfile, err := ioutil.ReadFile("/Users/vijay.pal/public_projects/envoyproxy/xds/control-plane/partner/config.yaml")
+	configfile := fmt.Sprintf("%s/%s", ConfigPath, "config.yaml")
+
+	yfile, err := ioutil.ReadFile(configfile)
 	if err != nil {
 
 		log.Fatal(err)

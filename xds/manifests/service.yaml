@@ -7,11 +7,10 @@ metadata:
 spec:
   ports:
   - name: http
-    nodePort: 30537
-    port: 443
+    port: 9901
     protocol: TCP
-    targetPort: http
+    targetPort: 9901
   selector:
     app.kubernetes.io/instance: g7
     app.kubernetes.io/name: g7
-  type: LoadBalancer
+  type: ClusterIP

@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: color-service
+  name: color-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: color-service
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: color-service
+    spec:
+      containers:
+      - image: hello_go_http:0.1
+        name: hello-go-http-pzp49
+        resources: {}
+status: {}
