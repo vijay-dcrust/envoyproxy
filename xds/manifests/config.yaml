@@ -1,0 +1,31 @@
+
+# partners:
+# - name: vendor-1
+#   tls_auth: tls
+#   hostname: vendor-1.gxs.com.sg
+#   destination: partner-api.sgbank.dev 
+#   dest_port: 443
+# - name: vendor-2
+#   tls_auth: mtls
+#   hostname: vendor-2.gxs.com.sg
+#   destination: api.sgbank.dev 
+#   dest_port: 443
+
+# cert:
+#   generate_missing_cert: yes
+partners:
+- name: vendor-1
+  tls_auth: tls
+  hostname: localhost
+  destination: hello-world.backend-dakota-app-01
+  dest_port: 80
+- name: vendor-2
+  tls_auth: mtls
+  hostname: localhost
+  destination: hello-world.backend-dakota-app-01 
+  dest_port: 80
+- name: vendor-3
+  tls_auth: tls
+  hostname: localhost
+  destination: hello-world.backend-dakota-app-01.svc.cluster.local 
+  dest_port: 80

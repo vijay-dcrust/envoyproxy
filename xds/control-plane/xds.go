@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"net"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/any"
@@ -18,7 +15,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -40,7 +36,8 @@ import (
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
 	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
-	sds "github.com/vijay-dcrust/envoyproxy/xds/control-plane/sds"
+	certsmgmt "github.com/vijay-dcrust/envoyproxy/xds/control-plane/certsmgmt"
+	partner "github.com/vijay-dcrust/envoyproxy/xds/control-plane/partner"
 )
 
 // This is mostly copied from
@@ -49,35 +46,32 @@ import (
 
 const (
 	// don't use dots in resource name
-	ClusterName1  = "cluster_a"
-	ClusterName2  = "cluster_b"
-	RouteName     = "local_route"
-	ListenerName  = "listener_0"
-	ListenerPort  = 10000
-	UpstreamHost  = "127.0.0.1"
-	UpstreamPort1 = 8080
-	UpstreamPort2 = 8081
+	// ClusterName1  = "cluster_a"
+	// ClusterName2  = "cluster_b"
+	RouteName    = "local_route"
+	ListenerName = "listener_0"
+	//ListenerPort = 10000
+	// UpstreamHost  = "127.0.0.1"
+	// UpstreamPort1 = 8080
+	// UpstreamPort2 = 8081
 
 	xdsPort                  = 9977
 	grpcMaxConcurrentStreams = 1000000
 )
 
-func makeCluster(clusterName string) *cluster.Cluster {
+func makeCluster(clusterName string, destinationHost string, upstreamPort int) *cluster.Cluster {
 	return &cluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment:       makeEndpoint(clusterName),
+		LoadAssignment:       makeEndpoint(clusterName, destinationHost, upstreamPort),
 		DnsLookupFamily:      cluster.Cluster_V4_ONLY,
 	}
 }
 
-func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
-	port := uint32(UpstreamPort1)
-	if clusterName == ClusterName2 {
-		port = UpstreamPort2
-	}
+func makeEndpoint(clusterName string, destinationHost string, upstreamPort int) *endpoint.ClusterLoadAssignment {
+	port := uint32(upstreamPort)
 	return &endpoint.ClusterLoadAssignment{
 		ClusterName: clusterName,
 		Endpoints: []*endpoint.LocalityLbEndpoints{{
@@ -88,7 +82,7 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 							Address: &core.Address_SocketAddress{
 								SocketAddress: &core.SocketAddress{
 									Protocol: core.SocketAddress_TCP,
-									Address:  UpstreamHost,
+									Address:  destinationHost,
 									PortSpecifier: &core.SocketAddress_PortValue{
 										PortValue: port,
 									},
@@ -102,95 +96,38 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 	}
 }
 
-func makeRoute(routeName string, weight uint32, clusterName1, clusterName2 string) *route.RouteConfiguration {
+func makeRoute(routeName string, clusterName string, destinationHost string) *route.RouteConfiguration {
 	routeConfiguration := &route.RouteConfiguration{
 		Name: routeName,
 		VirtualHosts: []*route.VirtualHost{{
-			Name:    "local_service",
+			Name:    clusterName,
 			Domains: []string{"*"},
 		}},
 	}
-	switch weight {
-	case 0:
-		routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
+	// switch weight {
+	// case 0:
+	routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{
+				Prefix: "/",
+			},
+		},
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_Cluster{
+					Cluster: clusterName,
+				},
+				HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
+					HostRewriteLiteral: destinationHost,
 				},
 			},
-			Action: &route.Route_Route{
-				Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_Cluster{
-						Cluster: clusterName1,
-					},
-					HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-						HostRewriteLiteral: UpstreamHost,
-					},
-				},
-			},
-		}}
+		},
+	}}
 
-	case 100:
-		routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
-				},
-			},
-			Action: &route.Route_Route{
-				Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_Cluster{
-						Cluster: clusterName2,
-					},
-					HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-						HostRewriteLiteral: UpstreamHost,
-					},
-				},
-			},
-		}}
-		// canary-roll out:
-	default:
-		routeConfiguration.VirtualHosts[0].Routes = []*route.Route{{
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
-				},
-			},
-			Action: &route.Route_Route{
-				Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_WeightedClusters{
-						WeightedClusters: &route.WeightedCluster{
-							TotalWeight: &wrapperspb.UInt32Value{
-								Value: 100,
-							},
-							Clusters: []*route.WeightedCluster_ClusterWeight{
-								{
-									Name: clusterName1,
-									Weight: &wrapperspb.UInt32Value{
-										Value: 100 - weight,
-									},
-								},
-								{
-									Name: clusterName2,
-									Weight: &wrapperspb.UInt32Value{
-										Value: weight,
-									},
-								},
-							},
-						},
-					},
-					HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-						HostRewriteLiteral: UpstreamHost,
-					},
-				},
-			},
-		}}
-
-	}
 	return routeConfiguration
 }
 
-func makeHTTPListener(listenerName string, route string) *listener.Listener {
+func makeHTTPListener(listenerName string, route string, listenerPort int, tls_auth string, hostName string) *listener.Listener {
 	// HTTP filter configuration
 	manager := &hcm.HttpConnectionManager{
 		CodecType:  hcm.HttpConnectionManager_AUTO,
@@ -214,12 +151,41 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 	if err != nil {
 		panic(err)
 	}
-	downstreamTlsContextBytes, err := proto.Marshal(sds.CreateDownStreamContext())
+	downstreamTlsContextBytes, err := proto.Marshal(certsmgmt.CreateDownStreamContext(tls_auth, listenerName, hostName))
 	if err != nil {
 		panic(err)
 	}
 
-	return &listener.Listener{
+	filterChainMatch := &listener.FilterChainMatch{
+		ServerNames: []string{"localhost", "host.docker.internal"},
+	}
+	if tls_auth == "" {
+		lstr := &listener.Listener{
+			Name: listenerName,
+			Address: &core.Address{
+				Address: &core.Address_SocketAddress{
+					SocketAddress: &core.SocketAddress{
+						Protocol: core.SocketAddress_TCP,
+						Address:  "0.0.0.0",
+						PortSpecifier: &core.SocketAddress_PortValue{
+							PortValue: uint32(listenerPort),
+						},
+					},
+				},
+			},
+			FilterChains: []*listener.FilterChain{{
+				Filters: []*listener.Filter{{
+					Name: wellknown.HTTPConnectionManager,
+					ConfigType: &listener.Filter_TypedConfig{
+						TypedConfig: pbst,
+					},
+				}},
+			}},
+		}
+		//lstr.FilterChains[0].FilterChainMatch = filterChainMatch
+		return lstr
+	}
+	listener := &listener.Listener{
 		Name: listenerName,
 		Address: &core.Address{
 			Address: &core.Address_SocketAddress{
@@ -227,7 +193,17 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 					Protocol: core.SocketAddress_TCP,
 					Address:  "0.0.0.0",
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: ListenerPort,
+						PortValue: uint32(listenerPort),
+					},
+				},
+			},
+		},
+		ListenerFilters: []*listener.ListenerFilter{
+			{
+				Name: "envoy.filters.listener.tls_inspector",
+				ConfigType: &listener.ListenerFilter_TypedConfig{
+					TypedConfig: &any.Any{
+						TypeUrl: "type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector",
 					},
 				},
 			},
@@ -250,6 +226,8 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 			},
 		}},
 	}
+	listener.FilterChains[0].FilterChainMatch = filterChainMatch
+	return listener
 }
 
 func makeConfigSource() *core.ConfigSource {
@@ -274,33 +252,54 @@ var (
 	version int
 )
 
-func GenerateSnapshot(weight uint32) (*cachev3.Snapshot, error) {
+func GenerateSnapshot(weight uint32, clusterName []string, destinationHost []string, upstreamPort []int, tlsAuth []string, hostNameList []string) (*cachev3.Snapshot, error) {
 	version++
-	var secrets []types.Resource
-	for _, s := range sds.CreateSecret() {
-		secrets = append(secrets, s)
+	// var secrets []types.Resource
+	// for _, s := range certsmgmt.CreateSecret() {
+	// 	secrets = append(secrets, s)
+	// }
+	// Create a new resources map to store the clusters
+	//listenerNameList := []string{"listener_0", "listener_1"}
+	//listenerPortList := []int{10000, 10001}
+	firstlistenerPort := 9999
+	//routeNameList := []string{"local_route_1", "local_route_2"}
+	//virtualHostNameList := []string{"local_service_1", "local_service_2"}
+	var clustersResources []types.Resource
+	var routeResources []types.Resource
+	var listenerResources []types.Resource
+	for i, config := range clusterName {
+		firstlistenerPort++
+		clusterObj := makeCluster(config, destinationHost[i], upstreamPort[i])
+		routeObj := makeRoute(config, config, destinationHost[i])
+		listenerObj := makeHTTPListener(config, config, firstlistenerPort, tlsAuth[i], hostNameList[i])
+		listenerResources = append(listenerResources, listenerObj)
+
+		// Add the cluster to the snapshot
+		clustersResources = append(clustersResources, clusterObj)
+		routeResources = append(routeResources, routeObj)
 	}
+	// listenerObj := makeHTTPListener("listener_0", "local_route_1", 10000)
+	// listenerResources = append(listenerResources, listenerObj)
 
 	nextversion := fmt.Sprintf("snapshot-%d", version)
 	fmt.Println("publishing version: ", nextversion)
-	return cachev3.NewSnapshot(
+	snapshot, err := cachev3.NewSnapshot(
 		nextversion, // version needs to be different for different snapshots
 		map[resource.Type][]types.Resource{
 			resource.EndpointType: {},
-			resource.ClusterType: {
-				makeCluster(ClusterName1),
-				makeCluster(ClusterName2),
-			},
-			resource.RouteType: {
-				makeRoute(RouteName, weight, ClusterName1, ClusterName2),
-			},
-			resource.ListenerType: {
-				makeHTTPListener(ListenerName, RouteName),
-			},
+			resource.ClusterType:  clustersResources,
+			//makeCluster(clusterName, destinationHost, upstreamPort),
+			resource.RouteType:    routeResources,
+			resource.ListenerType: listenerResources,
+			//{
+			// 	makeHTTPListener(ListenerName, routeNameList[0], 10000),
+			// },
 			resource.RuntimeType: {},
-			resource.SecretType:  secrets,
+			resource.SecretType:  {},
 		},
 	)
+
+	return snapshot, err
 }
 
 func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
@@ -360,7 +359,28 @@ func main() {
 	cache := cachev3.NewSnapshotCache(false, ClusterNodeHasher{}, l)
 
 	// Create the snapshot that we'll serve to Envoy
-	snapshot, err := GenerateSnapshot(0)
+	partnerList, err := partner.GetPartnerList()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	var clusterNameList []string
+	var destinationHostList []string
+	var portList []int
+	var tlsAuthList []string
+	var hostNameList []string
+	for _, partner := range partnerList {
+		clusterNameList = append(clusterNameList, partner.Name)
+		destinationHostList = append(destinationHostList, partner.Destination)
+		portList = append(portList, partner.Dest_Port)
+		tlsAuthList = append(tlsAuthList, partner.Tls_Auth)
+		hostNameList = append(hostNameList, partner.HostName)
+	}
+	// clusterName := partnerList[0].Name
+	// destinationHost := partnerList[0].Destination
+	upstreamPort := partnerList[0].Dest_Port
+	fmt.Printf("Upstream Port value %d", upstreamPort)
+
+	snapshot, err := GenerateSnapshot(0, clusterNameList, destinationHostList, portList, tlsAuthList, hostNameList)
 	if err != nil {
 		l.Errorf("could not generate snapshot: %+v", err)
 		os.Exit(1)
@@ -376,50 +396,40 @@ func main() {
 		l.Errorf("snapshot error %q for %+v", err, snapshot)
 		os.Exit(1)
 	}
-
 	// Run the xDS server
 	cb := &testv3.Callbacks{Debug: true}
 	srv := serverv3.NewServer(ctx, cache, cb)
 	go RunServer(ctx, srv, xdsPort)
+	// for {
+	// 	for i, partner := range partnerList {
+	// 		if i == 0 {
+	// 			continue
+	// 		}
+	// 		clusterName := partner.Name
+	// 		destinationHost := partner.Destination
+	// 		upstreamPort := partner.Dest_Port
+	// 		fmt.Printf("Upstream Port value %d", upstreamPort)
 
-	reader := bufio.NewReader(os.Stdin)
-	for {
+	// 		snapshot, err := GenerateSnapshot(0, clusterName, destinationHost, upstreamPort)
+	// 		if err != nil {
+	// 			l.Errorf("could not generate snapshot: %+v", err)
+	// 			os.Exit(1)
+	// 		}
+	// 		if err := snapshot.Consistent(); err != nil {
+	// 			l.Errorf("snapshot inconsistency: %+v\n%+v", snapshot, err)
+	// 			os.Exit(1)
+	// 		}
+	// 		l.Debugf("will serve snapshot %+v", snapshot)
+	// 		// Add the snapshot to the cache
+	// 		if err := cache.SetSnapshot(ctx, nodeGroup, snapshot); err != nil {
+	// 			l.Errorf("snapshot error %q for %+v", err, snapshot)
+	// 			os.Exit(1)
+	// 		}
 
-		fmt.Print("Enter weight for cluster-b: ")
-		text, _ := reader.ReadString('\n')
-		text = strings.TrimSpace(text)
-		if text == "" {
-			continue
-		}
-		weight, _ := strconv.Atoi(text)
-		clampedWeight := clampWeight(weight)
-		fmt.Println("setting weight to", clampedWeight)
-
-		snapshot, err = GenerateSnapshot(clampedWeight)
-		if err != nil {
-			l.Errorf("could not generate snapshot: %+v", err)
-			os.Exit(1)
-		}
-		if err := snapshot.Consistent(); err != nil {
-			l.Errorf("snapshot inconsistency: %+v\n%+v", snapshot, err)
-			os.Exit(1)
-		}
-		l.Debugf("will serve snapshot %+v", snapshot)
-		// Add the snapshot to the cache
-		if err := cache.SetSnapshot(ctx, nodeGroup, snapshot); err != nil {
-			l.Errorf("snapshot error %q for %+v", err, snapshot)
-			os.Exit(1)
-		}
-
-	}
-}
-
-func clampWeight(weight int) uint32 {
-	// if weight > 100 {
-	// 	weight = 100
+	// 	}
+	//
 	// }
-	if weight < 0 {
-		weight = 0
+	for {
+		time.Sleep(1000 * time.Second)
 	}
-	return uint32(weight)
 }

@@ -1,0 +1,12 @@
+resources:
+- deployment.yaml
+- service.yaml
+- serviceaccount.yaml
+
+
+configMapGenerator:
+  - name: partner-config
+    files:
+      - config.yaml
+
+namespace: dakota-infra-01
