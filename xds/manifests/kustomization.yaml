@@ -9,4 +9,4 @@ configMapGenerator:
     files:
       - config.yaml
 
-namespace: dakota-infra
+namespace: dakota-infra-01

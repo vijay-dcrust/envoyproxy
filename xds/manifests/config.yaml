@@ -17,15 +17,15 @@ partners:
 - name: vendor-1
   tls_auth: tls
   hostname: localhost
-  destination: color-service 
-  dest_port: 8080
+  destination: hello-world.backend-dakota-app-01
+  dest_port: 80
 - name: vendor-2
   tls_auth: mtls
   hostname: localhost
-  destination: color-service 
-  dest_port: 8081
-# - name: vendor-3
-#   tls_auth: tls
-#   hostname: localhost
-#   destination: localhost 
-#   dest_port: 8082
+  destination: hello-world.backend-dakota-app-01 
+  dest_port: 80
+- name: vendor-3
+  tls_auth: tls
+  hostname: localhost
+  destination: hello-world.backend-dakota-app-01.svc.cluster.local 
+  dest_port: 80

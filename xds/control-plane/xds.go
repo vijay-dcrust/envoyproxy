@@ -159,6 +159,32 @@ func makeHTTPListener(listenerName string, route string, listenerPort int, tls_a
 	filterChainMatch := &listener.FilterChainMatch{
 		ServerNames: []string{"localhost", "host.docker.internal"},
 	}
+	if tls_auth == "" {
+		lstr := &listener.Listener{
+			Name: listenerName,
+			Address: &core.Address{
+				Address: &core.Address_SocketAddress{
+					SocketAddress: &core.SocketAddress{
+						Protocol: core.SocketAddress_TCP,
+						Address:  "0.0.0.0",
+						PortSpecifier: &core.SocketAddress_PortValue{
+							PortValue: uint32(listenerPort),
+						},
+					},
+				},
+			},
+			FilterChains: []*listener.FilterChain{{
+				Filters: []*listener.Filter{{
+					Name: wellknown.HTTPConnectionManager,
+					ConfigType: &listener.Filter_TypedConfig{
+						TypedConfig: pbst,
+					},
+				}},
+			}},
+		}
+		//lstr.FilterChains[0].FilterChainMatch = filterChainMatch
+		return lstr
+	}
 	listener := &listener.Listener{
 		Name: listenerName,
 		Address: &core.Address{

@@ -42,7 +42,8 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: metadata.uid
-        image: g7-gateway-v0.0.1
+        # image: vijaydcrust/g7-gateway-v0.0.1
+        image: vijaydcrust/g7-gateway:v0.0.2
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -67,11 +68,10 @@ spec:
           timeoutSeconds: 5
         resources:
           limits:
-            cpu: 100m
-            memory: 128Mi
+            memory: 256Mi
           requests:
-            cpu: 100m
-            memory: 128Mi
+            cpu: 200m
+            memory: 256Mi
         volumeMounts:
         - mountPath: /var/certs
           name: certs      
@@ -91,7 +91,8 @@ spec:
           value: debug
         - name: GRADE
           value: production
-        image: g7-xds-v0.0.1
+        #image: 
+        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/insight:g7-xds-v0.0.2
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -110,11 +111,10 @@ spec:
           timeoutSeconds: 5
         resources:
           limits:
-            cpu: 100m
-            memory: 128Mi
+            memory: 256Mi
           requests:
-            cpu: 100m
-            memory: 128Mi
+            cpu: 200m
+            memory: 256Mi
         startupProbe:
           failureThreshold: 30
           periodSeconds: 10
