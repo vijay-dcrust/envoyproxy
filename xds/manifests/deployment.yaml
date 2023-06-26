@@ -43,7 +43,7 @@ spec:
               apiVersion: v1
               fieldPath: metadata.uid
         # image: vijaydcrust/g7-gateway-v0.0.1
-        image: vijaydcrust/g7-gateway:v0.0.2
+        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/insight:g7-gateway-v0.0.2
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -92,7 +92,7 @@ spec:
         - name: GRADE
           value: production
         #image: 
-        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/insight:g7-xds-v0.0.2
+        image: 851255665500.dkr.ecr.ap-southeast-1.amazonaws.com/insight:g7-xds-v0.0.3
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
